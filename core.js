@@ -53,7 +53,7 @@
         return {productId:p.id,name:p.name,sku:p.sku,quantity:line.quantity,unitPrice:line.unitPrice,lineTotal,costRM:p.costRM??null};
       });
       int(total,'Sale total',0,1000000000000);
-      db.sales[cmd.id]={id:cmd.id,items,total,payment:cmd.payment,customer:String(cmd.customer||'').trim().slice(0,160),note:String(cmd.note||'').trim().slice(0,500),status:'completed',...stamp};
+      db.sales[cmd.id]={id:cmd.id,items,total,payment:cmd.payment,customer:String(cmd.customer||'').trim().slice(0,160),customerPhone:String(cmd.customerPhone||'').trim().slice(0,32),note:String(cmd.note||'').trim().slice(0,500),status:'completed',...stamp};
     }else if(cmd.type==='void'){
       const s=db.sales[cmd.saleId];requireThat(s,'Sale not found.');requireThat(s.status==='completed','This sale has already been voided.');
       const reason=text(cmd.reason,'Reason for voiding',200);
@@ -68,6 +68,6 @@
     return {revenue:sales.reduce((n,s)=>n+s.total,0),todayRevenue:today.reduce((n,s)=>n+s.total,0),todayCount:today.length,unitsSold:sales.reduce((n,s)=>n+s.items.reduce((v,i)=>v+i.quantity,0),0),stock:products.reduce((n,p)=>n+p.stock,0),low:products.filter(p=>p.stock<=p.lowStock),count:sales.length};
   }
   function csvCell(value){let s=String(value??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';}
-  function salesCsv(sales){const rows=[['Sale ID','Date (WIB)','Status','Seller','Customer','Payment','SKU','Product','Quantity','Unit price (IDR)','Unit price (MYR reference)','Line total (IDR)','Line total (MYR reference)','Sale total (IDR)','Sale total (MYR reference)','Note','Void reason']];for(const s of sales)for(const i of s.items)rows.push([s.id,new Date(s.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),s.status,s.by,s.customer,s.payment,i.sku,canonicalName(i.name),i.quantity,i.unitPrice,(i.unitPrice/IDR_PER_MYR).toFixed(2),i.lineTotal,(i.lineTotal/IDR_PER_MYR).toFixed(2),s.total,(s.total/IDR_PER_MYR).toFixed(2),s.note,s.voidReason||'']);return '\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');}
+  function salesCsv(sales){const rows=[['Sale ID','Date (WIB)','Status','Seller','Customer','Customer WhatsApp','Payment','SKU','Product','Quantity','Unit price (IDR)','Unit price (MYR reference)','Line total (IDR)','Line total (MYR reference)','Sale total (IDR)','Sale total (MYR reference)','Note','Void reason']];for(const s of sales)for(const i of s.items)rows.push([s.id,new Date(s.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),s.status,s.by,s.customer,s.customerPhone||'',s.payment,i.sku,canonicalName(i.name),i.quantity,i.unitPrice,(i.unitPrice/IDR_PER_MYR).toFixed(2),i.lineTotal,(i.lineTotal/IDR_PER_MYR).toFixed(2),s.total,(s.total/IDR_PER_MYR).toFixed(2),s.note,s.voidReason||'']);return '\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');}
   const api={blank,normalize,apply,summary,dateKey,salesCsv};if(typeof module!=='undefined')module.exports=api;else root.StockFlowCore=api;
 })(globalThis);

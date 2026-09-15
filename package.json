@@ -1,8 +1,8 @@
 {
   "name":"stockflow-sales",
-  "version":"1.0.0",
+  "version":"2.0.0",
   "private":true,
-  "description":"Simple inventory and sales management using the original Firebase REST backbone",
+  "description":"StockFlow shared POS, inventory, cashier login and WhatsApp e-invoicing by Muhammad Irfan",
   "scripts":{"start":"node server.js","test":"node --test tests/*.test.js"},
   "engines":{"node":">=18"}
 }
