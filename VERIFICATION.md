@@ -27,3 +27,18 @@ Verified end-to-end:
 9. No browser page errors occur during the flow.
 
 The mobile compatibility fixes are in `app.js` and `stockflow-api.js`.
+
+v3.1 verification
+-----------------
+- Cash received >= sale total is enforced; change is calculated and stored.
+- Closed-shift sales are excluded from current Sales History via currentShiftSales().
+- Cash received/change fields are included in sales CSV and detailed close-shift CSV.
+- npm test: 28/28 passing.
+
+
+## v3.2 checks
+- Concurrent carts cannot reserve more units than physical stock.
+- A sale can consume its own hold but cannot consume another cashier's hold.
+- Stale holds expire automatically.
+- Clear revenue/history preserves inventory and active holds.
+- Availability polling reads only products + live hold data every 2.5 seconds; full workspace sync remains every 15 seconds.

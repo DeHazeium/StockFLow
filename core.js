@@ -6,6 +6,31 @@
   function int(value,label,min=0,max=1000000000){requireThat(Number.isSafeInteger(value)&&value>=min&&value<=max,`${label} must be a whole number between ${min} and ${max.toLocaleString()}.`);return value;}
   function text(value,label,max=160){requireThat(typeof value==='string'&&value.trim().length>0&&value.trim().length<=max,`${label} is required (up to ${max} characters).`);return value.trim();}
   function blank(){return {version:1,products:{},sales:{},movements:{},operations:{},shifts:{}};}
+  const HOLD_RECORD_ID='liveHolds',HOLD_TTL_MS=120000;
+  function holdRecord(data){const db=normalize(data),r=db.operations?.[HOLD_RECORD_ID];return r&&r.type==='live_holds'&&Array.isArray(r.holds)?r:null;}
+  function activeHolds(data,now=Date.now()){const r=holdRecord(data);return (r?.holds||[]).filter(h=>h&&typeof h.sessionId==='string'&&Number.isFinite(h.expiresAt)&&h.expiresAt>now&&Array.isArray(h.items));}
+  function heldQuantity(data,productId,excludeSessionId=null,now=Date.now()){return activeHolds(data,now).filter(h=>!excludeSessionId||h.sessionId!==excludeSessionId).reduce((sum,h)=>sum+h.items.filter(i=>i&&i.productId===productId).reduce((n,i)=>n+(Number.isSafeInteger(i.quantity)&&i.quantity>0?i.quantity:0),0),0);}
+  function availableStock(data,productId,sessionId=null,now=Date.now()){const db=normalize(data),p=db.products[productId];return p?Math.max(0,p.stock-heldQuantity(db,productId,sessionId,now)):0;}
+  function applyHold(data,sessionId,items,at=Date.now(),ttlMs=HOLD_TTL_MS){
+    const db=normalize(clone(data||blank()));
+    requireThat(typeof sessionId==='string'&&/^[A-Za-z0-9_-]{8,120}$/.test(sessionId),'Invalid cart session. Reload StockFlow and try again.');
+    requireThat(Number.isFinite(at)&&at>0,'Invalid reservation time.');
+    requireThat(Number.isFinite(ttlMs)&&ttlMs>=30000&&ttlMs<=600000,'Invalid reservation timeout.');
+    const holds=activeHolds(db,at).filter(h=>h.sessionId!==sessionId);
+    const clean=[];const seen=new Set();
+    for(const line of items||[]){
+      requireThat(line&&typeof line.productId==='string','Reservation product is missing.');
+      requireThat(!seen.has(line.productId),'Duplicate product in cart reservation.');seen.add(line.productId);
+      int(line.quantity,'Reserved quantity',1,1000000);
+      const p=db.products[line.productId];requireThat(p&&p.active,'A product in this cart is no longer available.');
+      const otherHeld=holds.reduce((sum,h)=>sum+h.items.filter(i=>i&&i.productId===p.id).reduce((n,i)=>n+(Number.isSafeInteger(i.quantity)&&i.quantity>0?i.quantity:0),0),0);
+      requireThat(p.stock-otherHeld>=line.quantity,`${p.name}: only ${Math.max(0,p.stock-otherHeld)} available because another cashier has stock on hold.`);
+      clean.push({productId:p.id,quantity:line.quantity});
+    }
+    if(clean.length)holds.push({sessionId,updatedAt:at,expiresAt:at+ttlMs,items:clean});
+    if(holds.length)db.operations[HOLD_RECORD_ID]={type:'live_holds',at,by:'StockFlow Counter',uid:'stockflow-shared-counter',holds};else delete db.operations[HOLD_RECORD_ID];
+    return db;
+  }
   function normalize(data){return {...blank(),...(data||{}),products:data?.products||{},sales:data?.sales||{},movements:data?.movements||{},operations:data?.operations||{},shifts:data?.shifts||{}};}
   function product(input){
     const p={...input,name:text(input.name,'Product name'),sku:text(input.sku,'SKU',40).toUpperCase(),category:text(input.category,'Category',60)};
@@ -90,7 +115,7 @@
       const key=s.payment==='Cash'?'cash':s.payment==='QR / bank transfer'?'qrBankTransfer':'card';
       paymentTotals[key]=(paymentTotals[key]||0)+s.total;
     });
-    const inventory=Object.values(db.products).filter(p=>p.active).sort((a,b)=>String(a.sku).localeCompare(String(b.sku))).map(p=>({id:p.id,sku:p.sku,name:canonicalName(p.name),stock:p.stock,lowStock:p.lowStock,price:p.price,promoPrice:p.promoPrice??null,costRM:p.costRM??null}));
+    const inventory=Object.values(db.products).filter(p=>p.active).sort((a,b)=>String(a.sku).localeCompare(String(b.sku))).map(p=>({id:p.id,sku:p.sku,name:canonicalName(p.name),category:p.category||'',stock:p.stock,lowStock:p.lowStock,price:p.price,promoPrice:p.promoPrice??null,costRM:p.costRM??null}));
     const firstRecord=Math.min(...sales.map(s=>s.at),...movements.map(m=>m.at),closedAt);
     return {
       fromAt,
@@ -108,6 +133,11 @@
       lowStockCount:inventory.filter(p=>p.stock<=p.lowStock).length,
       productCount:inventory.length
     };
+  }
+  function currentShiftSales(data){
+    const db=normalize(data);
+    const cutoff=Object.values(db.shifts||{}).reduce((max,s)=>Math.max(max,Number(s.closedAt)||0),0);
+    return Object.values(db.sales||{}).filter(s=>Number.isFinite(s.at)&&s.at>cutoff).sort((a,b)=>b.at-a.at).map(clone);
   }
   function apply(data,cmd,actor){
     const db=normalize(clone(data||blank()));
@@ -139,6 +169,7 @@
         const target=row.target,targetStock=int(target.stock,'Original catalogue stock',0,1000000);
         if(row.exists){
           const p=db.products[row.productId],delta=targetStock-p.stock;
+          requireThat(targetStock>=heldQuantity(db,p.id,null,cmd.at),`${p.name}: original quantity is below the amount currently on hold. Clear those carts first.`);
           p.name=canonicalName(p.name);
           if(p.active===false)p.active=true;
           if(delta!==0||p.updatedAt==null||row.needsChange){p.stock=targetStock;p.updatedAt=cmd.at;}
@@ -161,18 +192,28 @@
         const p=db.products[line.productId];requireThat(p&&p.active,'A product is no longer available. Remove it from this sale.');
         requireThat(!seen.has(p.id),'Duplicate product in sale.');seen.add(p.id);
         int(line.quantity,'Quantity',1,1000000);int(line.unitPrice,'Unit price');
-        requireThat(p.stock>=line.quantity,`${p.name}: only ${p.stock} left in stock.`);
+        const available=availableStock(db,p.id,cmd.reservationId||null,cmd.at);requireThat(available>=line.quantity,`${p.name}: only ${available} available because another cashier has stock on hold.`);
         const lineTotal=line.quantity*line.unitPrice;int(lineTotal,'Line total',0,1000000000000);total+=lineTotal;
         p.stock-=line.quantity;p.updatedAt=cmd.at;movement(p.id,-line.quantity,'Sale '+cmd.id.slice(-8).toUpperCase());
         return {productId:p.id,name:p.name,sku:p.sku,quantity:line.quantity,unitPrice:line.unitPrice,lineTotal,costRM:p.costRM??null};
       });
       int(total,'Sale total',0,1000000000000);
-      db.sales[cmd.id]={id:cmd.id,items,total,payment:cmd.payment,customer:String(cmd.customer||'').trim().slice(0,160),customerPhone:String(cmd.customerPhone||'').trim().slice(0,32),note:String(cmd.note||'').trim().slice(0,500),status:'completed',...stamp};
+      let cashFields={};
+      if(cmd.payment==='Cash'){
+        requireThat(cmd.cashReceived!==undefined&&cmd.cashReceived!==null&&cmd.cashReceived!=='','Enter the amount of cash the customer gave you.');
+        const received=int(cmd.cashReceived,'Cash received',0,1000000000000);
+        requireThat(received>=total,'Cash received must be at least the sale total.');
+        cashFields={cashReceived:received,change:received-total};
+      }
+      db.sales[cmd.id]={id:cmd.id,items,total,payment:cmd.payment,...cashFields,customer:String(cmd.customer||'').trim().slice(0,160),customerPhone:String(cmd.customerPhone||'').trim().slice(0,32),note:String(cmd.note||'').trim().slice(0,500),status:'completed',...stamp};
+      if(cmd.reservationId){const r=holdRecord(db);if(r){r.holds=(r.holds||[]).filter(h=>h.sessionId!==cmd.reservationId&&h.expiresAt>cmd.at);if(!r.holds.length)delete db.operations[HOLD_RECORD_ID];else r.at=cmd.at;}}
     }else if(cmd.type==='void'){
       const s=db.sales[cmd.saleId];requireThat(s,'Sale not found.');requireThat(s.status==='completed','This sale has already been voided.');
       const reason=text(cmd.reason,'Reason for voiding',200);
       s.items.forEach(line=>{const p=db.products[line.productId];requireThat(p,'Cannot restore stock: product not found.');int(p.stock+line.quantity,'Restored stock',0,1000000);p.stock+=line.quantity;p.updatedAt=cmd.at;movement(p.id,line.quantity,'Voided sale '+s.id.slice(-8).toUpperCase()+': '+reason);});
       Object.assign(s,{status:'voided',voidReason:reason,voidAt:cmd.at,voidBy:actor.email});
+    }else if(cmd.type==='clear_history'){
+      const live=holdRecord(db);db.sales={};db.movements={};db.shifts={};db.operations={};if(live&&activeHolds({operations:{[HOLD_RECORD_ID]:live}},cmd.at).length)db.operations[HOLD_RECORD_ID]={...live,holds:live.holds.filter(h=>h.expiresAt>cmd.at),at:cmd.at};
     }else if(cmd.type==='close_shift'){
       const snap=shiftSummary(db,cmd.at);
       db.shifts[cmd.id]={id:cmd.id,...snap,note:String(cmd.note||'').trim().slice(0,500),...stamp};
@@ -185,6 +226,78 @@
     return {revenue:sales.reduce((n,s)=>n+s.total,0),todayRevenue:today.reduce((n,s)=>n+s.total,0),todayCount:today.length,unitsSold:sales.reduce((n,s)=>n+s.items.reduce((v,i)=>v+i.quantity,0),0),stock:products.reduce((n,p)=>n+p.stock,0),low:products.filter(p=>p.stock<=p.lowStock),count:sales.length};
   }
   function csvCell(value){let s=String(value??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';}
-  function salesCsv(sales){const rows=[['Sale ID','Date (WIB)','Status','Seller','Customer','Customer WhatsApp','Payment','SKU','Product','Quantity','Unit price (IDR)','Unit price (MYR reference)','Line total (IDR)','Line total (MYR reference)','Sale total (IDR)','Sale total (MYR reference)','Note','Void reason']];for(const s of sales)for(const i of s.items)rows.push([s.id,new Date(s.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),s.status,s.by,s.customer,s.customerPhone||'',s.payment,i.sku,canonicalName(i.name),i.quantity,i.unitPrice,(i.unitPrice/IDR_PER_MYR).toFixed(2),i.lineTotal,(i.lineTotal/IDR_PER_MYR).toFixed(2),s.total,(s.total/IDR_PER_MYR).toFixed(2),s.note,s.voidReason||'']);return '\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');}
-  const api={blank,normalize,apply,summary,shiftSummary,dateKey,salesCsv,canonicalName,catalogRestockPlan};if(typeof module!=='undefined')module.exports=api;else root.StockFlowCore=api;
+  function salesCsv(sales){const rows=[['Sale ID','Date (WIB)','Status','Seller','Customer','Customer WhatsApp','Payment','Cash received (IDR)','Change given (IDR)','SKU','Product','Quantity','Unit price (IDR)','Unit price (MYR reference)','Line total (IDR)','Line total (MYR reference)','Sale total (IDR)','Sale total (MYR reference)','Note','Void reason']];for(const s of sales)for(const i of s.items)rows.push([s.id,new Date(s.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),s.status,s.by,s.customer,s.customerPhone||'',s.payment,s.payment==='Cash'?(s.cashReceived??s.total):'',s.payment==='Cash'?(s.change??Math.max(0,(s.cashReceived??s.total)-s.total)):'',i.sku,canonicalName(i.name),i.quantity,i.unitPrice,(i.unitPrice/IDR_PER_MYR).toFixed(2),i.lineTotal,(i.lineTotal/IDR_PER_MYR).toFixed(2),s.total,(s.total/IDR_PER_MYR).toFixed(2),s.note,s.voidReason||'']);return '\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');}
+  function shiftCsv(sh){
+    requireThat(sh&&typeof sh==='object','Shift report is required.');
+    const sales=Array.isArray(sh.sales)?sh.sales:[];
+    const completed=sales.filter(s=>s.status==='completed');
+    const voided=sales.filter(s=>s.status==='voided');
+    const inventory=Array.isArray(sh.inventory)?sh.inventory:[];
+    const movements=Array.isArray(sh.movements)?sh.movements:[];
+    const byProduct=new Map();
+    for(const sale of completed){
+      for(const line of sale.items||[]){
+        const key=String(line.productId||line.sku||line.name||'unknown');
+        const row=byProduct.get(key)||{productId:line.productId||'',sku:line.sku||'',name:canonicalName(line.name),units:0,transactions:new Set(),revenue:0,weightedPrice:0};
+        row.units+=Number(line.quantity)||0;
+        row.transactions.add(sale.id);
+        row.revenue+=Number(line.lineTotal)||0;
+        row.weightedPrice+=(Number(line.unitPrice)||0)*(Number(line.quantity)||0);
+        byProduct.set(key,row);
+      }
+    }
+    const itemSummary=[...byProduct.values()].sort((a,b)=>b.units-a.units||b.revenue-a.revenue||a.name.localeCompare(b.name));
+    const paymentMethods=[['Cash','Cash'],['QR / bank transfer','QR / bank transfer'],['Card','Card']];
+    const rows=[
+      ['StockFlow Close Shift Report'],
+      ['Generated by','StockFlow by Muhammad Irfan'],
+      ['Shift ID',sh.id||''],
+      ['Started (WIB)',new Date(sh.startedAt).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'})],
+      ['Closed (WIB)',new Date(sh.closedAt).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'})],
+      ['Shift note',sh.note||''],
+      [],
+      ['SHIFT SUMMARY'],
+      ['Metric','Value'],
+      ['Completed sales',sh.completedCount??completed.length],
+      ['Voided sales',sh.voidedCount??voided.length],
+      ['Total recorded transactions',sales.length],
+      ['Units sold',sh.unitsSold??completed.reduce((n,s)=>n+(s.items||[]).reduce((m,i)=>m+(Number(i.quantity)||0),0),0)],
+      ['Gross revenue IDR',sh.grossRevenue??completed.reduce((n,s)=>n+(Number(s.total)||0),0)],
+      ['Gross revenue MYR (reference)',((sh.grossRevenue??completed.reduce((n,s)=>n+(Number(s.total)||0),0))/IDR_PER_MYR).toFixed(2)],
+      ['Stock on hand at close',sh.stockOnHand??inventory.reduce((n,p)=>n+(Number(p.stock)||0),0)],
+      [],
+      ['PAYMENT BREAKDOWN'],
+      ['Payment method','Completed transactions','Revenue IDR','Revenue MYR (reference)','Share of revenue']
+    ];
+    const gross=sh.grossRevenue??completed.reduce((n,s)=>n+(Number(s.total)||0),0);
+    for(const [label,value] of paymentMethods){
+      const list=completed.filter(s=>s.payment===value),revenue=list.reduce((n,s)=>n+(Number(s.total)||0),0);
+      rows.push([label,list.length,revenue,(revenue/IDR_PER_MYR).toFixed(2),gross?((revenue/gross)*100).toFixed(1)+'%':'0.0%']);
+    }
+    rows.push([],['ITEMS SOLD - SUMMARY'],['SKU','Product','Units sold','Transactions','Sales IDR','Sales MYR (reference)','Average unit price IDR','Average unit price MYR (reference)','Stock at close','Low-stock level']);
+    for(const item of itemSummary){
+      const inv=inventory.find(p=>p.id===item.productId)||inventory.find(p=>String(p.sku||'').toUpperCase()===String(item.sku||'').toUpperCase())||inventory.find(p=>canonicalName(p.name)===item.name);
+      const avg=item.units?item.weightedPrice/item.units:0;
+      rows.push([item.sku,item.name,item.units,item.transactions.size,item.revenue,(item.revenue/IDR_PER_MYR).toFixed(2),Math.round(avg),(avg/IDR_PER_MYR).toFixed(2),inv?.stock??'',inv?.lowStock??'']);
+    }
+    if(!itemSummary.length)rows.push(['','','No completed items sold','','','','','','','']);
+    rows.push([],['TRANSACTION LINE ITEMS'],['Sale ID','Date (WIB)','Status','Customer','WhatsApp','Payment','Cash received IDR','Change given IDR','SKU','Product','Quantity','Unit price IDR','Unit price MYR (reference)','Line total IDR','Line total MYR (reference)','Sale total IDR','Sale total MYR (reference)','Sale note','Void reason']);
+    for(const sale of sales){
+      const items=Array.isArray(sale.items)?sale.items:[];
+      if(!items.length)rows.push([sale.id,new Date(sale.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),sale.status,sale.customer||'Walk-in customer',sale.customerPhone||'',sale.payment||'',sale.payment==='Cash'?(sale.cashReceived??sale.total??0):'',sale.payment==='Cash'?(sale.change??Math.max(0,(sale.cashReceived??sale.total??0)-(sale.total||0))):'','','',0,'','','','',sale.total||0,((sale.total||0)/IDR_PER_MYR).toFixed(2),sale.note||'',sale.voidReason||'']);
+      for(const line of items)rows.push([sale.id,new Date(sale.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),sale.status,sale.customer||'Walk-in customer',sale.customerPhone||'',sale.payment||'',sale.payment==='Cash'?(sale.cashReceived??sale.total):'',sale.payment==='Cash'?(sale.change??Math.max(0,(sale.cashReceived??sale.total)-sale.total)):'',line.sku||'',canonicalName(line.name),line.quantity,line.unitPrice,(line.unitPrice/IDR_PER_MYR).toFixed(2),line.lineTotal,(line.lineTotal/IDR_PER_MYR).toFixed(2),sale.total,(sale.total/IDR_PER_MYR).toFixed(2),sale.note||'',sale.voidReason||'']);
+    }
+    rows.push([],['VOIDED SALES'],['Sale ID','Date (WIB)','Customer','Payment','Original total IDR','Original total MYR (reference)','Void reason']);
+    for(const sale of voided)rows.push([sale.id,new Date(sale.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),sale.customer||'Walk-in customer',sale.payment||'',sale.total,(sale.total/IDR_PER_MYR).toFixed(2),sale.voidReason||'']);
+    if(!voided.length)rows.push(['','','No voided sales','','','','']);
+    rows.push([],['STOCK MOVEMENTS'],['Date (WIB)','SKU','Product','Change','Reason']);
+    for(const m of movements){
+      const inv=inventory.find(p=>p.id===m.productId);
+      rows.push([new Date(m.at).toLocaleString('sv-SE',{timeZone:'Asia/Jakarta'}),inv?.sku||'',canonicalName(inv?.name||m.productId),m.delta,m.reason||'']);
+    }
+    rows.push([],['INVENTORY AT CLOSE'],['SKU','Product','Category','Stock','Low-stock level','Selling price IDR','Selling price MYR (reference)','Promo price IDR','Promo price MYR (reference)','Purchase cost MYR']);
+    for(const p of inventory)rows.push([p.sku,canonicalName(p.name),p.category||'',p.stock,p.lowStock,p.price,(p.price/IDR_PER_MYR).toFixed(2),p.promoPrice??'',p.promoPrice==null?'':(p.promoPrice/IDR_PER_MYR).toFixed(2),p.costRM??'']);
+    return '\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
+  }
+  const api={blank,normalize,apply,summary,shiftSummary,currentShiftSales,dateKey,salesCsv,shiftCsv,canonicalName,catalogRestockPlan,activeHolds,heldQuantity,availableStock,applyHold,HOLD_TTL_MS};if(typeof module!=='undefined')module.exports=api;else root.StockFlowCore=api;
 })(globalThis);

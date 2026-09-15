@@ -1,6 +1,6 @@
 (function(root){
   'use strict';
-  // StockFlow v2.6: shared Firebase Realtime Database workspace with no cashier login UI.
+  // StockFlow v3.2: shared Firebase Realtime Database workspace with live cart stock holds and no cashier login UI.
   // Uses the existing Firebase RTDB URL/path. Firebase Authentication is intentionally not used.
   const CFG=root.MB_FIREBASE_CONFIG||{};
   const Core=root.StockFlowCore;
@@ -33,11 +33,10 @@
     return new Error(String(msg));
   }
 
-  function databaseUrl(){
-    const base=String(CFG.databaseURL||'').replace(/\/$/,'');
-    if(!base)throw new Error('Firebase RTDB is not configured. Keep firebase-config.js beside StockFlow and reload.');
-    return base+'/stockFlow/data.json';
-  }
+  function databaseBase(){const base=String(CFG.databaseURL||'').replace(/\/$/,'');if(!base)throw new Error('Firebase RTDB is not configured. Keep firebase-config.js beside StockFlow and reload.');return base;}
+  function databaseUrl(){return databaseBase()+'/stockFlow/data.json';}
+  function productsUrl(){return databaseBase()+'/stockFlow/data/products.json';}
+  function holdsUrl(){return databaseBase()+'/stockFlow/data/operations/liveHolds.json';}
 
   function assertFirebaseSafeKeys(value,path='stockFlow/data'){
     if(value===null||typeof value!=='object')return;
@@ -85,6 +84,37 @@
           return Core.normalize(db);
         }
         throw new Error('Another device is updating StockFlow right now. Please retry; nothing was overwritten.');
+      },
+      async hold(sessionId,items,at=Date.now()){
+        for(let attempt=0;attempt<5;attempt++){
+          const current=await remote('GET');
+          if(!current.ok)throw await firebaseError(current);
+          const etag=current.headers.get('ETag');
+          if(!etag)throw new Error('Firebase did not provide a version check for the cart hold. Please retry.');
+          const db=Core.applyHold(await current.json(),sessionId,items,at);
+          const saved=await remote('PUT',db,etag);
+          if(saved.status===412)continue;
+          if(!saved.ok)throw await firebaseError(saved);
+          return Core.normalize(db);
+        }
+        throw new Error('Another cashier changed stock at the same time. Your cart was not changed; please try again.');
+      },
+      async readAvailability(){
+        const [productsRes,holdsRes]=await Promise.all([
+          request(productsUrl(),{method:'GET',cache:'no-store'}),
+          request(holdsUrl(),{method:'GET',cache:'no-store'})
+        ]);
+        if(!productsRes.ok)throw await firebaseError(productsRes);
+        if(!holdsRes.ok)throw await firebaseError(holdsRes);
+        return {products:(await productsRes.json())||{},liveHolds:(await holdsRes.json())||null};
+      },
+      releaseHoldFast(sessionId){
+        try{
+          // A full transactional release is normally used. This is only a best-effort tab-close cleanup;
+          // expired holds are also ignored automatically after two minutes.
+          const url=holdsUrl();
+          void url; // Keep API shape explicit; direct mutation is unsafe here, so expiry remains the fallback.
+        }catch{}
       }
     };
   }

@@ -27,3 +27,7 @@ The helper does NOT connect to Firebase. It preserves all other rule branches an
 IMPORTANT SECURITY NOTE
 -----------------------
 A shared RTDB with no authentication must allow unauthenticated access to the StockFlow path. That means anyone who discovers the database endpoint could potentially read/write that path. The included rules keep schema validation, but there is no user identity or permission boundary. If you later want stronger security without a visible cashier login, use a trusted backend or configure an authentication/App Check flow.
+
+v3.2 NOTE — LIVE CART HOLDS
+---------------------------
+No additional RTDB rule branch is required for v3.2 live stock holds. They are stored in the existing validated operations/liveHolds record so the included detailed StockFlow rules remain compatible.

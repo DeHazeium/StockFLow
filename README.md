@@ -68,3 +68,22 @@ npm test
 ```
 
 The v2.7 suite covers Firebase REST reads/writes and ETag conflict handling, sales/voids, catalogue totals, legacy ID/SKU/name restock matching, missing-item recreation, full-catalogue restock, shift snapshots and shift boundaries.
+## v3.0 detailed Close Shift CSV
+The Close Shift CSV now includes a shift summary, payment breakdown, per-product items-sold summary, transaction line items, voided sales, stock movements, and inventory at close. This makes the export suitable for handover and reconciliation instead of only being a basic transaction list.
+
+
+## v3.1 updates
+- Sales History now shows only sales in the currently open shift. Once a shift is closed, those sales remain available inside the Shifts tab and its saved reports, but no longer clutter the active Sales History view.
+- Cash checkout now asks for the amount received from the customer and calculates change automatically before the sale can be completed.
+- Cash received and change are stored on the sale receipt and included in sales/shift CSV exports.
+- Browser asset version bumped to v3.1 to reduce stale-cache problems on phones.
+
+
+## v3.2 — Live stock holds + protected history reset
+
+- Adding an item to a cart now creates an atomic Firebase RTDB stock hold so another phone cannot reserve the same unit.
+- Product cards and Inventory show available quantity and quantity currently on hold.
+- Holds refresh automatically while the cart is active and expire after 2 minutes without activity so abandoned carts do not lock stock forever.
+- Checkout converts the cart hold into a sale in the same ETag-protected database mutation.
+- Settings now includes **Clear revenue & history** with two confirmations (including typing `CLEAR`). It deletes sales, revenue history, closed shifts and stock-movement history while preserving products, current stock and active cart holds.
+- The existing detailed Firebase rules remain compatible because live holds are stored under the existing validated `operations/liveHolds` record; no new RTDB rules branch is required.
