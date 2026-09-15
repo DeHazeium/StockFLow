@@ -1,4 +1,4 @@
-# StockFlow v2.6 — Firebase RTDB, no login, shift closing + one-tap restock
+# StockFlow v2.7 — Firebase RTDB, resilient restock matching + shift closing
 
 StockFlow by Muhammad Irfan keeps the same Firebase Realtime Database project and the same `stockFlow/data` workspace. There is no cashier ID, signup, password or Firebase Authentication screen.
 
@@ -8,7 +8,7 @@ StockFlow by Muhammad Irfan keeps the same Firebase Realtime Database project an
 - A closed shift stores a snapshot of sales, payment totals, voided sales, stock movements and the complete inventory at closing time.
 - Each shift can be reopened and downloaded as **CSV** or full **JSON**.
 - The next shift automatically starts after the previous shift close.
-- **Restock originals** button in Inventory. It sets the 20 SUCCESS26 catalogue products back to their original opening quantities (117 units total) from the catalogue data used to build StockFlow. Sales, shift reports and stock history are preserved. Custom products are not changed.
+- **Restock originals** now matches catalogue products by ID, SKU, normalized product name, and known legacy names. It restores the 20 SUCCESS26 catalogue products to their original opening quantities (117 units total), and automatically recreates a catalogue item if it is genuinely missing. Sales, shift reports and stock history are preserved. Custom products are not changed.
 - Existing WhatsApp e-invoice (+62 default), DuitNow QR, IDR + MYR displays, Beaded Bracelet 5, exports/backups, launch animation and mobile anti-zoom behaviour are retained.
 
 ## Firebase RTDB permission fix — required once
@@ -55,7 +55,7 @@ stockFlow/data/operations    stable operation IDs for safe retries
 
 ## Catalogue restock quantities
 
-The original StockFlow catalogue contains 20 products and 117 opening units. `catalog.js` is the preserved reference used by the Restock originals action. Restock changes quantities only; it does not reset prices or erase historical records.
+The original StockFlow catalogue contains 20 products and 117 opening units. `catalog.js` is the preserved reference used by the Restock originals action. Restock preserves existing matched product records and prices, changes their quantities to the PDF opening quantities, and recreates any genuinely missing catalogue product from the preserved catalogue metadata. It does not erase historical records.
 
 ## Running
 
@@ -67,4 +67,4 @@ Serve the `StockFlow` folder with any normal static web host/server and open `in
 npm test
 ```
 
-The v2.6 suite covers Firebase REST reads/writes and ETag conflict handling, sales/voids, catalogue totals, full-catalogue restock, shift snapshots and shift boundaries.
+The v2.7 suite covers Firebase REST reads/writes and ETag conflict handling, sales/voids, catalogue totals, legacy ID/SKU/name restock matching, missing-item recreation, full-catalogue restock, shift snapshots and shift boundaries.

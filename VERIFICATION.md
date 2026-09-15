@@ -1,6 +1,6 @@
-# StockFlow v2.6 verification
+# StockFlow v2.7 verification
 
-Automated test result: **19/19 passed**.
+Automated test result: **22/22 passed**.
 
 Verified in the local test suite:
 
@@ -9,6 +9,9 @@ Verified in the local test suite:
 - Sales deduct stock atomically and keep historical values.
 - Voids restore stock once and preserve the original sale record.
 - Restock originals returns catalogue products to the original quantities without deleting sales/history.
+- Restock matches legacy inventory when Firebase product IDs differ by using SKU and normalized product names.
+- Legacy “Imposter bracelet” is recognized as Beaded Bracelet 5, and the PDF typo “Pua Kumbu Scaft” is recognized as Pua Kumbu Scarf.
+- Genuinely missing catalogue items are recreated automatically at their original quantity while custom products are left unchanged.
 - Restock movements record the exact per-product delta.
 - Close shift stores completed/voided counts, revenue, payment totals, items sold, stock movements and inventory snapshot.
 - A new shift window begins after the previous close.
