@@ -1,8 +1,8 @@
 {
   "name": "stockflow-sales",
-  "version": "2.3.0",
+  "version": "2.5.0",
   "private": true,
-  "description": "StockFlow local-first POS, inventory, cashier login and WhatsApp e-invoicing by Muhammad Irfan",
+  "description": "StockFlow shared Firebase RTDB POS, inventory and WhatsApp e-invoicing by Muhammad Irfan — no cashier login required",
   "scripts": {
     "test": "node --test tests/*.test.js"
   },
