@@ -1,28 +1,70 @@
-# StockFlow v2.5 — Firebase RTDB, no cashier login
+# StockFlow v2.6 — Firebase RTDB, no login, shift closing + one-tap restock
 
-This build keeps the existing StockFlow Firebase Realtime Database connection and removes the cashier ID / signup / password interface.
+StockFlow by Muhammad Irfan keeps the same Firebase Realtime Database project and the same `stockFlow/data` workspace. There is no cashier ID, signup, password or Firebase Authentication screen.
 
-## Behaviour
+## What this build adds
 
-- Opens with the StockFlow by Muhammad Irfan loading animation, then goes straight to the dashboard.
-- No Firebase Authentication UI, cashier ID, signup, password, or sign-out flow.
-- Inventory, sales, movements and operations use the existing Firebase RTDB URL from `firebase-config.js` at `stockFlow/data`.
-- Devices using the same deployed StockFlow site and RTDB workspace see the same data.
-- Writes use Firebase ETags and conditional PUTs to reduce accidental overwrites when multiple devices save at the same time.
-- Refreshes when the app becomes visible and every 15 seconds while visible.
-- WhatsApp e-invoice defaults to Indonesia `+62`.
-- DuitNow QR, IDR + MYR display, Beaded Bracelet 5, exports/backups and the mobile Safari input auto-zoom fix are retained.
+- **Close shift** button on the dashboard plus a dedicated **Shifts** page.
+- A closed shift stores a snapshot of sales, payment totals, voided sales, stock movements and the complete inventory at closing time.
+- Each shift can be reopened and downloaded as **CSV** or full **JSON**.
+- The next shift automatically starts after the previous shift close.
+- **Restock originals** button in Inventory. It sets the 20 SUCCESS26 catalogue products back to their original opening quantities (117 units total) from the catalogue data used to build StockFlow. Sales, shift reports and stock history are preserved. Custom products are not changed.
+- Existing WhatsApp e-invoice (+62 default), DuitNow QR, IDR + MYR displays, Beaded Bracelet 5, exports/backups, launch animation and mobile anti-zoom behaviour are retained.
 
-## Important Firebase rules note
+## Firebase RTDB permission fix — required once
 
-This build intentionally performs no user login. It therefore sends RTDB REST requests without a Firebase Authentication token. Your currently deployed RTDB rules for `stockFlow/data` must permit the access pattern you want. This package does not modify or publish your Firebase database or rules.
+The older StockFlow rules required an authenticated Firebase email account. Because this version has **no login**, those old rules return `Permission denied`.
 
-## Run locally
+The app code already uses the same Firebase database URL and path. Do **not** change `firebase-config.js`.
 
-Use any static web server. The included optional `server.js` can be used only as a preview server if desired; no Node backend is required for StockFlow data.
+This ZIP includes:
+
+- `database.rules.additions.json` — the no-login StockFlow rule branch with schema validation, including shifts.
+- `update-stockflow-rules.js` — offline helper that replaces only the `stockFlow` branch in a copy of your currently deployed rules.
+- `FIREBASE-RULES-SETUP.txt` — exact one-time steps.
+
+Recommended procedure:
+
+1. Firebase Console → **Realtime Database → Rules**.
+2. Copy the current full rules into `current-live-rules.json` in this folder.
+3. Run:
+
+   ```text
+   node update-stockflow-rules.js current-live-rules.json merged-rules.json
+   ```
+
+4. Review `merged-rules.json`.
+5. Paste it back into Firebase Console and click **Publish**.
+6. Reload StockFlow and tap **Try again**.
+
+The helper never connects to Firebase and cannot publish anything itself.
+
+### Security note
+
+A shared RTDB path with no authentication has no per-user identity boundary. The included rules still validate the StockFlow data structure, but anyone who can directly reach the database endpoint could potentially access the StockFlow path. If stronger security is needed later without a visible cashier login, use a trusted backend or a configured App Check/authentication flow.
+
+## Data layout
+
+```text
+stockFlow/data/products      live inventory
+stockFlow/data/sales         e-invoices / sales records
+stockFlow/data/movements     sales, restocks, adjustments and void restores
+stockFlow/data/shifts        closed-shift snapshots and reports
+stockFlow/data/operations    stable operation IDs for safe retries
+```
+
+## Catalogue restock quantities
+
+The original StockFlow catalogue contains 20 products and 117 opening units. `catalog.js` is the preserved reference used by the Restock originals action. Restock changes quantities only; it does not reset prices or erase historical records.
+
+## Running
+
+Serve the `StockFlow` folder with any normal static web host/server and open `index.html`. No Node backend is required for live StockFlow data; Node is only needed if you choose to run the offline rules helper or automated tests.
 
 ## Tests
 
-```bash
+```text
 npm test
 ```
+
+The v2.6 suite covers Firebase REST reads/writes and ETag conflict handling, sales/voids, catalogue totals, full-catalogue restock, shift snapshots and shift boundaries.

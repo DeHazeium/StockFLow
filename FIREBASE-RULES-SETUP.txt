@@ -1,0 +1,29 @@
+STOCKFLOW v2.6 — ONE-TIME FIREBASE RTDB RULE UPDATE
+===================================================
+
+Why this is needed
+------------------
+StockFlow no longer has a login screen or Firebase Authentication. Your older RTDB rules required an authenticated email account, so Firebase correctly returns "Permission denied" to the new no-login build.
+
+The app still uses the SAME Firebase project and SAME database path:
+  stockFlow/data
+
+Nothing in firebase-config.js needs to change.
+
+Safest way to update ONLY StockFlow rules
+------------------------------------------
+1. Open Firebase Console > Realtime Database > Rules.
+2. Copy your CURRENT full deployed rules and save them as:
+     current-live-rules.json
+   inside this StockFlow folder.
+3. In a terminal in this folder run:
+     node update-stockflow-rules.js current-live-rules.json merged-rules.json
+4. Open merged-rules.json and review it.
+5. Paste the merged rules into Firebase Console > Realtime Database > Rules and Publish.
+6. Reload StockFlow and tap Try again if needed.
+
+The helper does NOT connect to Firebase. It preserves all other rule branches and replaces only the "stockFlow" rules.
+
+IMPORTANT SECURITY NOTE
+-----------------------
+A shared RTDB with no authentication must allow unauthenticated access to the StockFlow path. That means anyone who discovers the database endpoint could potentially read/write that path. The included rules keep schema validation, but there is no user identity or permission boundary. If you later want stronger security without a visible cashier login, use a trusted backend or configure an authentication/App Check flow.

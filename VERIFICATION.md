@@ -1,11 +1,18 @@
-# StockFlow v2.5 verification
+# StockFlow v2.6 verification
 
-- Cashier login/signup/password UI removed.
-- First-load StockFlow animation retained.
-- Existing Firebase RTDB URL restored through `firebase-config.js`.
-- Shared data path: `stockFlow/data`.
-- Firebase Authentication is not used by the app.
-- Conditional ETag writes retained for multi-device conflict protection.
-- 15-second visible-tab refresh restored.
-- WhatsApp +62, DuitNow QR, MYR/IDR, Beaded Bracelet 5 and mobile no-auto-zoom retained.
-- Run `npm test` for automated checks.
+Automated test result: **19/19 passed**.
+
+Verified in the local test suite:
+
+- SUCCESS26 catalogue = 20 products / 117 opening units.
+- Beaded Bracelet 5 canonical name is retained.
+- Sales deduct stock atomically and keep historical values.
+- Voids restore stock once and preserve the original sale record.
+- Restock originals returns catalogue products to the original quantities without deleting sales/history.
+- Restock movements record the exact per-product delta.
+- Close shift stores completed/voided counts, revenue, payment totals, items sold, stock movements and inventory snapshot.
+- A new shift window begins after the previous close.
+- Firebase REST continues using `stockFlow/data` with ETag conditional writes.
+- Permission-denied errors direct the user to the included no-login StockFlow rules.
+
+Real Firebase permission changes cannot be published by this ZIP. The included rules must be reviewed and published in Firebase Console once because the previous authenticated rules are incompatible with a no-login client.

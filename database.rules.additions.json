@@ -2,8 +2,8 @@
   "rules": {
     "stockFlow": {
       "data": {
-        ".read": "auth != null && auth.token.email != null && auth.token.firebase.sign_in_provider != 'anonymous' && (auth.token.email === 'f4nzamv05@gmail.com' || root.child('stockFlowMembers').child(auth.uid).val() === true)",
-        ".write": "auth != null && auth.token.email != null && auth.token.firebase.sign_in_provider != 'anonymous' && newData.exists() && (auth.token.email === 'f4nzamv05@gmail.com' || root.child('stockFlowMembers').child(auth.uid).val() === true)",
+        ".read": true,
+        ".write": "newData.exists()",
         ".validate": "newData.hasChildren(['version']) && newData.child('version').val() === 1",
         "version": { ".validate": "newData.val() === 1" },
         "products": {
@@ -44,14 +44,17 @@
             "delta": { ".validate": "newData.isNumber() && newData.val() % 1 === 0" }
           }
         },
+        "shifts": {
+          "$id": {
+            ".validate": "newData.hasChildren(['id','startedAt','closedAt','completedCount','voidedCount','grossRevenue','unitsSold','paymentTotals','stockOnHand','at','by','uid']) && newData.child('id').val() === $id",
+            "closedAt": { ".validate": "newData.isNumber() && newData.val() > 0" },
+            "grossRevenue": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "stockOnHand": { ".validate": "newData.isNumber() && newData.val() >= 0" }
+          }
+        },
         "operations": { "$id": { ".validate": "newData.hasChildren(['type','at','by','uid'])" } },
         "$other": { ".validate": false }
       }
-    },
-    "stockFlowMembers": {
-      ".read": "auth != null && auth.token.email === 'f4nzamv05@gmail.com' && auth.token.firebase.sign_in_provider != 'anonymous'",
-      ".write": "auth != null && auth.token.email === 'f4nzamv05@gmail.com' && auth.token.firebase.sign_in_provider != 'anonymous'",
-      "$uid": { ".validate": "newData.isBoolean()" }
     }
   }
 }

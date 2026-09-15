@@ -1,6 +1,6 @@
 (function(root){
   'use strict';
-  // StockFlow v2.5: shared Firebase Realtime Database workspace with no cashier login UI.
+  // StockFlow v2.6: shared Firebase Realtime Database workspace with no cashier login UI.
   // Uses the existing Firebase RTDB URL/path. Firebase Authentication is intentionally not used.
   const CFG=root.MB_FIREBASE_CONFIG||{};
   const Core=root.StockFlowCore;
@@ -22,7 +22,7 @@
     const d=await response.json().catch(()=>({}));
     const msg=d.error?.message||d.error||'Firebase request failed';
     if(response.status===401||response.status===403||/permission_denied|Permission denied/i.test(String(msg))){
-      return new Error('Firebase RTDB denied access. This no-login build keeps the same StockFlow RTDB path, so the deployed database rules must allow this workspace to read and write without Firebase Authentication.');
+      return new Error('Firebase RTDB denied access. StockFlow is now no-login, so publish the included no-login rule for stockFlow/data once, then tap Try again. Your Firebase project and data path stay unchanged.');
     }
     return new Error(String(msg));
   }
