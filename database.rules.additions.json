@@ -1,0 +1,57 @@
+{
+  "rules": {
+    "stockFlow": {
+      "data": {
+        ".read": "auth != null && auth.token.email != null && auth.token.firebase.sign_in_provider != 'anonymous' && (auth.token.email === 'f4nzamv05@gmail.com' || root.child('stockFlowMembers').child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.token.email != null && auth.token.firebase.sign_in_provider != 'anonymous' && newData.exists() && (auth.token.email === 'f4nzamv05@gmail.com' || root.child('stockFlowMembers').child(auth.uid).val() === true)",
+        ".validate": "newData.hasChildren(['version']) && newData.child('version').val() === 1",
+        "version": { ".validate": "newData.val() === 1" },
+        "products": {
+          "$id": {
+            ".validate": "newData.hasChildren(['id','sku','name','category','stock','price','lowStock','active','updatedAt']) && newData.child('id').val() === $id",
+            "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 160" },
+            "sku": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+            "category": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
+            "stock": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000 && newData.val() % 1 === 0" },
+            "price": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000000 && newData.val() % 1 === 0" },
+            "promoPrice": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000000 && newData.val() % 1 === 0" },
+            "costRM": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000" },
+            "lowStock": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000 && newData.val() % 1 === 0" },
+            "active": { ".validate": "newData.isBoolean()" },
+            "updatedAt": { ".validate": "newData.isNumber() && newData.val() > 0" }
+          }
+        },
+        "sales": {
+          "$id": {
+            ".validate": "newData.hasChildren(['id','items','total','payment','status','at','by','uid']) && newData.child('id').val() === $id",
+            "total": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000000000 && newData.val() % 1 === 0" },
+            "status": { ".validate": "newData.val() === 'completed' || newData.val() === 'voided'" },
+            "payment": { ".validate": "newData.val() === 'Cash' || newData.val() === 'QR / bank transfer' || newData.val() === 'Card'" },
+            "at": { ".validate": "newData.isNumber() && newData.val() > 0" },
+            "items": {
+              ".validate": "newData.hasChildren()",
+              "$line": {
+                ".validate": "newData.hasChildren(['productId','name','sku','quantity','unitPrice','lineTotal']) && newData.child('lineTotal').val() === newData.child('quantity').val() * newData.child('unitPrice').val()",
+                "quantity": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000 && newData.val() % 1 === 0" },
+                "unitPrice": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000000 && newData.val() % 1 === 0" }
+              }
+            }
+          }
+        },
+        "movements": {
+          "$id": {
+            ".validate": "newData.hasChildren(['productId','delta','reason','at','by','uid'])",
+            "delta": { ".validate": "newData.isNumber() && newData.val() % 1 === 0" }
+          }
+        },
+        "operations": { "$id": { ".validate": "newData.hasChildren(['type','at','by','uid'])" } },
+        "$other": { ".validate": false }
+      }
+    },
+    "stockFlowMembers": {
+      ".read": "auth != null && auth.token.email === 'f4nzamv05@gmail.com' && auth.token.firebase.sign_in_provider != 'anonymous'",
+      ".write": "auth != null && auth.token.email === 'f4nzamv05@gmail.com' && auth.token.firebase.sign_in_provider != 'anonymous'",
+      "$uid": { ".validate": "newData.isBoolean()" }
+    }
+  }
+}
