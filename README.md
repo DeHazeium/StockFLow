@@ -2,7 +2,16 @@
 
 **StockFlow by Muhammad Irfan** is a lightweight POS, inventory, cashier-account and e-invoice web app for the SUCCESS26 catalogue.
 
-## What changed in this version
+## What changed in v2.2
+
+- Fixed cashier ID creation when StockFlow is opened from a static host or without the included API server.
+- StockFlow now tries the shared server first. If the server is unavailable, it securely creates a **local cashier ID on that phone** instead of failing.
+- Local IDs can sign out and sign back in on the same phone, and local sales/inventory are saved in that browser.
+- The UI clearly shows **Saved on this phone** / **Local mode** so it never pretends local data is shared.
+- The existing shared-server mode is unchanged: when the included Node server is running, cashier IDs and stock remain shared across phones.
+- Mobile anti-zoom behavior is preserved.
+
+## Features carried forward
 
 - Firebase account login has been removed completely.
 - Cashiers create their own **StockFlow Cashier ID + password** from the Sign Up page.
@@ -17,9 +26,12 @@
 
 ## Important: shared phones need one server
 
-There is **no Firebase dependency** in this version. Shared data is stored by the included Node.js server. For multiple phones to see the same StockFlow, they must all open the same running/deployed server URL.
+There is **no Firebase dependency** in this version. StockFlow has two modes:
 
-If each phone opens a separate copy on a different server, those copies will naturally have separate data.
+- **Shared mode** — when the included Node.js server/API is reachable. Cashier IDs, inventory and sales are shared across phones opening the same StockFlow URL.
+- **Local fallback mode** — when the API is not reachable (for example, a static-only upload). Account creation still works and the workspace is saved on that phone/browser, but it cannot sync to another phone without a shared backend.
+
+For multiple phones to see the same live StockFlow, they must all open the same running/deployed server URL. A browser-only static website cannot share writable stock data between different phones by itself.
 
 ## Run it
 

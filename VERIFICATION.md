@@ -4,7 +4,7 @@ Verified on 15 September 2026.
 
 ## Automated tests
 
-`npm test` → **19/19 passing**.
+`npm test` → **23/23 passing**.
 
 Coverage includes:
 
@@ -20,8 +20,12 @@ Coverage includes:
 - remembered cashier sessions
 - shared workspace API reads and mutations
 - session expiry and network interruption handling
+- static-host/offline cashier signup fallback
+- local cashier sign-out / sign-in persistence
+- local workspace save/read behavior
+- fallback password hashing when Web Crypto is unavailable
 
-## Live server smoke test
+## Shared server smoke test
 
 A temporary StockFlow server was started with an isolated data file. The following were checked successfully:
 
@@ -39,3 +43,7 @@ The temporary integration data was not included in the project package.
 - `node --check core.js` — passed
 - `node --check stockflow-api.js` — passed
 - `node --check server.js` — passed
+
+## Static-host signup regression test
+
+The API module is tested with the shared server deliberately unavailable. Cashier signup now falls back to a local hashed account, can sign out/sign back in, and can persist StockFlow data on the same phone/browser instead of failing.

@@ -26,3 +26,4 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulati
     touch-action:manipulation;
   }
 }
+.status-dot.local{background:#c89a4b}.sync-status .status-dot.local{box-shadow:0 0 0 3px #c89a4b18}
