@@ -1,10 +1,9 @@
 {
   "name": "stockflow-sales",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
-  "description": "StockFlow shared/local-fallback POS, inventory, cashier login and WhatsApp e-invoicing by Muhammad Irfan",
+  "description": "StockFlow local-first POS, inventory, cashier login and WhatsApp e-invoicing by Muhammad Irfan",
   "scripts": {
-    "start": "node server.js",
     "test": "node --test tests/*.test.js"
   },
   "engines": {

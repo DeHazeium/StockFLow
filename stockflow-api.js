@@ -1,5 +1,7 @@
 (function(root){
   'use strict';
+  // StockFlow v2.3: device-only cashier accounts and workspace.
+  // No Firebase, API server, or network connection is required.
   const TOKEN_KEY='stockflow_cashier_token_v1';
   const SESSION_KEY='stockflow_cashier_profile_v1';
   const LOCAL_ACCOUNTS_KEY='stockflow_local_cashiers_v1';
@@ -10,7 +12,7 @@
   function save(auth){
     if(auth){
       token=auth.token||'';
-      session={...auth.cashier,mode:auth.mode||auth.cashier?.mode||'shared'};
+      session={...auth.cashier,mode:'local'};
       localStorage.setItem(TOKEN_KEY,token);
       localStorage.setItem(SESSION_KEY,JSON.stringify(session));
     }else{
@@ -19,28 +21,6 @@
       localStorage.removeItem(SESSION_KEY);
     }
   }
-  function unavailable(message='StockFlow shared server is not available from this page.'){
-    const e=new Error(message);e.backendUnavailable=true;return e;
-  }
-  async function request(path,options={}){
-    let res;
-    try{
-      res=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...(options.headers||{})},signal:AbortSignal.timeout(20000)});
-    }catch(e){
-      const err=unavailable('Connection interrupted. The shared StockFlow server could not be reached.');err.ambiguous=true;throw err;
-    }
-    const contentType=String(res.headers?.get?.('content-type')||'').toLowerCase();
-    const isJson=contentType.includes('application/json');
-    const data=isJson?await res.json().catch(()=>({})):{};
-    if(!res.ok){
-      if(res.status===401){save(null);throw new Error(data.error||'Your session expired. Please sign in again.');}
-      if(res.status===404||res.status===405||!isJson)throw unavailable('This copy of StockFlow is running without its shared server.');
-      throw new Error(data.error||'Request failed.');
-    }
-    if(!isJson)throw unavailable('This copy of StockFlow is running without its shared server.');
-    return data;
-  }
-
   function normalizeId(v){return String(v||'').trim();}
   function validateLocalAccount(id,name,password,signup=false){
     id=normalizeId(id);
@@ -85,60 +65,38 @@
     return sha256Fallback(input);
   }
   function localProfile(a){return {id:a.id,name:a.name,key:a.key,createdAt:a.createdAt,mode:'local'};}
-  async function localSignUp({id,name,password}){
+  async function signUp({id,name,password}){
     const v=validateLocalAccount(id,name,password,true),accounts=localAccounts();
-    if(accounts[v.key])throw new Error('That Cashier ID is already saved on this phone. Try another one or sign in.');
+    if(accounts[v.key])throw new Error('That Cashier ID already exists on this phone. Sign in or choose another ID.');
     const salt=randomSalt(),account={id:v.id,key:v.key,name:v.name,salt,passwordHash:await passwordHash(v.password,salt),createdAt:Date.now()};
     accounts[v.key]=account;saveLocalAccounts(accounts);
-    save({token:'local:'+v.key,cashier:localProfile(account),mode:'local'});
+    save({token:'local:'+v.key,cashier:localProfile(account)});
     return session;
   }
-  async function localSignIn(id,password){
-    const v=validateLocalAccount(id,'',password,false),account=localAccounts()[v.key];
-    if(!account||await passwordHash(v.password,account.salt)!==account.passwordHash)throw new Error('Cashier ID or password is incorrect.');
-    save({token:'local:'+v.key,cashier:localProfile(account),mode:'local'});
-    return session;
-  }
-  function localData(){try{return root.StockFlowCore.normalize(JSON.parse(localStorage.getItem(LOCAL_DATA_KEY)||'null'));}catch{return root.StockFlowCore.blank();}}
-  function saveLocalData(data){localStorage.setItem(LOCAL_DATA_KEY,JSON.stringify(data));}
-
   async function signIn(id,password){
-    const key=normalizeId(id).toLowerCase(),accounts=localAccounts();
-    if(accounts[key])return localSignIn(id,password);
-    try{
-      const auth=await request('/login',{method:'POST',body:JSON.stringify({id,password})});save({...auth,mode:'shared'});return session;
-    }catch(e){
-      if(e.backendUnavailable)throw new Error('This Cashier ID is not saved on this phone, and the shared StockFlow server is unavailable. Create a local ID here or open the shared StockFlow server URL.');
-      throw e;
-    }
-  }
-  async function signUp({id,name,password}){
-    try{
-      const auth=await request('/signup',{method:'POST',body:JSON.stringify({id,name,password})});save({...auth,mode:'shared'});return session;
-    }catch(e){
-      if(!e.backendUnavailable)throw e;
-      return localSignUp({id,name,password});
-    }
+    const v=validateLocalAccount(id,'',password,false),account=localAccounts()[v.key];
+    if(!account)throw new Error('Cashier ID is not saved on this phone. Create an account on this device first.');
+    if(await passwordHash(v.password,account.salt)!==account.passwordHash)throw new Error('Cashier ID or password is incorrect.');
+    save({token:'local:'+v.key,cashier:localProfile(account)});
+    return session;
   }
   async function validateSession(){
     if(!session)return null;
-    if(session.mode==='local'||String(token).startsWith('local:')){
-      const account=localAccounts()[session.key];
-      if(!account){save(null);return null;}
-      session=localProfile(account);token='local:'+account.key;localStorage.setItem(TOKEN_KEY,token);localStorage.setItem(SESSION_KEY,JSON.stringify(session));return session;
-    }
-    if(!token)return null;
-    try{const data=await request('/me');session={...data.cashier,mode:'shared'};localStorage.setItem(SESSION_KEY,JSON.stringify(session));return session;}
-    catch(e){if(!token)return null;return session;}
+    const key=String(session.key||'').toLowerCase(),account=localAccounts()[key];
+    if(!account){save(null);return null;}
+    session=localProfile(account);token='local:'+account.key;
+    localStorage.setItem(TOKEN_KEY,token);localStorage.setItem(SESSION_KEY,JSON.stringify(session));
+    return session;
   }
   function actor(){if(!session)throw new Error('Please sign in again.');return {uid:'cashier:'+session.key,email:session.name+' · '+session.id,name:session.name,id:session.id};}
+  function localData(){try{return root.StockFlowCore.normalize(JSON.parse(localStorage.getItem(LOCAL_DATA_KEY)||'null'));}catch{return root.StockFlowCore.blank();}}
+  function saveLocalData(data){localStorage.setItem(LOCAL_DATA_KEY,JSON.stringify(data));}
   function createStore(){
-    if(session?.mode==='local'||String(token).startsWith('local:'))return {
+    return {
       demo:false,local:true,actor,
       async read(){return root.StockFlowCore.normalize(localData());},
       async mutate(command){const next=root.StockFlowCore.apply(localData(),command,actor());saveLocalData(next);return root.StockFlowCore.normalize(next);}
     };
-    return {demo:false,local:false,actor,async read(){const r=await request('/data');return root.StockFlowCore.normalize(r.data);},async mutate(command){const r=await request('/mutate',{method:'POST',body:JSON.stringify({command})});return root.StockFlowCore.normalize(r.data);}};
   }
-  root.StockFlowAPI={signIn,signUp,signOut:()=>save(null),getSession:()=>session,getMode:()=>session?.mode||null,validateSession,createStore};
+  root.StockFlowAPI={signIn,signUp,signOut:()=>save(null),getSession:()=>session,getMode:()=>session?'local':null,validateSession,createStore};
 })(globalThis);

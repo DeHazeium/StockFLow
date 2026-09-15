@@ -2,12 +2,29 @@
 
 Verified on 15 September 2026.
 
+## v2.3 device-only behavior
+
+- Removed the Node server and all `/api/...` calls.
+- Removed cross-phone cashier login behavior.
+- Cashier signup/login now works entirely from browser local storage.
+- The signed-in cashier is remembered on the same phone/browser until sign out.
+- Multiple Cashier IDs created on the same phone share one local inventory and sales workspace.
+- Passwords are stored as salted hashes rather than plaintext.
+- Existing v2.2 local cashier/workspace keys are preserved, so previously created local data can continue to load.
+- WhatsApp +62 default, DuitNow QR, IDR + MYR display, Beaded Bracelet 5, welcome animation, and mobile anti-zoom behavior remain included.
+
 ## Automated tests
 
-`npm test` → **23/23 passing**.
+`npm test` → **21/21 passing**.
 
 Coverage includes:
 
+- local cashier signup and remembered login
+- incorrect/unknown cashier credentials
+- duplicate ID protection
+- shared local workspace between cashier IDs on one device
+- local inventory persistence
+- password hashing fallback without Web Crypto
 - catalogue totals and missing values
 - atomic multi-line sales and stock deduction
 - insufficient-stock protection
@@ -16,34 +33,9 @@ Coverage includes:
 - product and stock validation
 - WIB business-day handling
 - CSV escaping/export
-- StockFlow Cashier ID signup/login
-- remembered cashier sessions
-- shared workspace API reads and mutations
-- session expiry and network interruption handling
-- static-host/offline cashier signup fallback
-- local cashier sign-out / sign-in persistence
-- local workspace save/read behavior
-- fallback password hashing when Web Crypto is unavailable
-
-## Shared server smoke test
-
-A temporary StockFlow server was started with an isolated data file. The following were checked successfully:
-
-- cashier account creation (`F4nz` test account)
-- ID/password login
-- signed remembered session token
-- authenticated shared data retrieval
-- static app delivery from `/`
-
-The temporary integration data was not included in the project package.
 
 ## Syntax checks
 
 - `node --check app.js` — passed
 - `node --check core.js` — passed
 - `node --check stockflow-api.js` — passed
-- `node --check server.js` — passed
-
-## Static-host signup regression test
-
-The API module is tested with the shared server deliberately unavailable. Cashier signup now falls back to a local hashed account, can sign out/sign back in, and can persist StockFlow data on the same phone/browser instead of failing.
