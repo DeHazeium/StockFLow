@@ -12,14 +12,28 @@
   const rm=n=>n==null?'Not supplied':'MYR '+Number(n).toFixed(2);
   const canonicalName=n=>C.canonicalName(n);
   const when=t=>new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jakarta',dateStyle:'medium',timeStyle:'short'}).format(new Date(t));
-  const id=()=>crypto.randomUUID();
+  function id(){
+    // randomUUID() only works in secure contexts on some mobile browsers.
+    // Use it when available, otherwise generate a collision-resistant UUID locally.
+    try{if(globalThis.crypto&&typeof globalThis.crypto.randomUUID==='function')return globalThis.crypto.randomUUID();}catch{}
+    const bytes=new Uint8Array(16);
+    try{if(globalThis.crypto&&typeof globalThis.crypto.getRandomValues==='function')globalThis.crypto.getRandomValues(bytes);else throw new Error('no crypto');}
+    catch{for(let i=0;i<bytes.length;i++)bytes[i]=Math.floor(Math.random()*256);}
+    bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+    const hex=[...bytes].map(b=>b.toString(16).padStart(2,'0'));
+    return hex.slice(0,4).join('')+'-'+hex.slice(4,6).join('')+'-'+hex.slice(6,8).join('')+'-'+hex.slice(8,10).join('')+'-'+hex.slice(10,16).join('');
+  }
+  const safeClone=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
   const products=()=>Object.values(S.db.products).filter(p=>p.active).map(p=>p.name==='Imposter Bracelet'?{...p,name:'Beaded Bracelet 5'}:p).sort((a,b)=>a.sku.localeCompare(b.sku));
   const sales=()=>Object.values(S.db.sales).sort((a,b)=>b.at-a.at);
   const shifts=()=>Object.values(S.db.shifts||{}).sort((a,b)=>b.closedAt-a.closedAt);
   const image=p=>p.image&&/^assets\/product-\d{2}\.jpg$/.test(p.image)?`<img src="${esc(p.image)}" alt="${esc(canonicalName(p.name))}" loading="lazy">`:`<span class="product-placeholder">${icon('box')}</span>`;
   function toast(msg,error=false){const el=document.querySelector('#toast');el.textContent=msg;el.className=error?'error':'';el.hidden=false;if(error&&modal.open){let alert=modal.querySelector('.modal-error');if(!alert){alert=document.createElement('p');alert.className='form-error modal-error';alert.setAttribute('role','alert');modal.append(alert);}alert.textContent=msg;}clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.hidden=true,error?10000:5000);}
+  let memoryPending=null;
   function pendingKey(){return 'stockflow_pending_'+S.store.actor().uid;}
-  function pending(){try{return JSON.parse(sessionStorage.getItem(pendingKey())||'null');}catch{return null;}}
+  function pending(){try{return JSON.parse(sessionStorage.getItem(pendingKey())||'null');}catch{return memoryPending;}}
+  function savePending(cmd){memoryPending=cmd;try{sessionStorage.setItem(pendingKey(),JSON.stringify(cmd));}catch{}}
+  function clearPending(){memoryPending=null;try{sessionStorage.removeItem(pendingKey());}catch{}}
   function normalizePhone(value){let d=String(value||'').replace(/\D/g,'');if(!d)return '';if(d.startsWith('0'))d='62'+d.slice(1);else if(d.startsWith('8'))d='62'+d;return d;}
   function paymentQr(compact=false){return `<div class="payment-qr-card ${compact?'compact':''}"><button type="button" data-action="qr" aria-label="Open payment QR"><img src="assets/duitnow-qr.png" alt="DuitNow Malaysia National QR"></button><div><strong>Scan to pay</strong><small>DuitNow · Malaysia National QR</small>${compact?'':'<span>Tap the QR to enlarge</span>'}</div></div>`;}
   function invoiceText(s){const lines=[`*StockFlow E-Invoice*`,`StockFlow by Muhammad Irfan`,`Invoice #${s.id.slice(-8).toUpperCase()}`,`${when(s.at)} WIB`,`Customer: ${s.customer||'Walk-in customer'}`,'',...s.items.map(i=>`${i.quantity}× ${canonicalName(i.name)} — ${money(i.lineTotal)} (${myr(i.lineTotal)})`),'',`*Total: ${money(s.total)} (${myr(s.total)})*`,`Payment: ${s.payment}`];if(s.note)lines.push(`Note: ${s.note}`);if(s.payment==='QR / bank transfer')lines.push('Payment QR: available at the StockFlow counter.');lines.push('','Thank you for your purchase ✨');return lines.join('\n');}
@@ -37,7 +51,7 @@
   function renderPending(){const b=document.querySelector('#pending-banner');if(!b)return;const p=pending();b.innerHTML=p?`<div class="pending-banner"><span>A save is awaiting confirmation. Retry it before starting another change.</span><button class="button small" data-action="retry">Retry pending save</button></div>`:'';}
   function title(kicker,heading,sub,actions=''){return `<div class="page-heading"><div><span class="eyebrow">${kicker}</span><h1>${heading}</h1><p>${sub}</p></div><div class="heading-actions">${actions}</div></div>`;}
   let cartObserver;
-  function renderPage(){const page=document.querySelector('#page');if(!page)return;page.innerHTML=({dashboard:dashboard,sale:salePage,inventory:inventory,history:history,shifts:shiftPage,settings:settings}[S.view])();cartObserver?.disconnect();const cart=document.querySelector('#sale-cart');if(cart){cartObserver=new IntersectionObserver(entries=>{const shortcut=document.querySelector('.mobile-cart-button');if(shortcut)shortcut.hidden=entries[0].isIntersecting;});cartObserver.observe(cart);}}
+  function renderPage(){const page=document.querySelector('#page');if(!page)return;page.innerHTML=({dashboard:dashboard,sale:salePage,inventory:inventory,history:history,shifts:shiftPage,settings:settings}[S.view])();cartObserver?.disconnect();const cart=document.querySelector('#sale-cart');if(cart&&typeof IntersectionObserver==='function'){cartObserver=new IntersectionObserver(entries=>{const shortcut=document.querySelector('.mobile-cart-button');if(shortcut)shortcut.hidden=entries[0].isIntersecting;});cartObserver.observe(cart);}else if(cart){const shortcut=document.querySelector('.mobile-cart-button');if(shortcut)shortcut.hidden=false;}}
   function badge(p){return `<span class="badge ${p.stock===0?'danger':p.stock<=p.lowStock?'warning':'success'}">${p.stock===0?'Out of stock':p.stock<=p.lowStock?'Low stock':'In stock'}</span>`;}
   function empty(titleText,description,action=''){return `<div class="empty">${icon('receipt')}<h3>${titleText}</h3><p>${description}</p>${action}</div>`;}
   function dashboard(){
@@ -87,12 +101,12 @@
     const prev=pending();if(prev&&prev.id!==cmd.id){toast('Retry the pending save first. It may already have reached the database.',true);renderPending();return false;}
     // Validate locally first; invalid input must never become an unresolved network operation.
     try{C.apply(S.db,cmd,S.store.actor());}catch(e){toast(e.message,true);return false;}
-    sessionStorage.setItem(pendingKey(),JSON.stringify(cmd));setBusy(true);
-    try{S.db=await S.store.mutate(cmd);sessionStorage.removeItem(pendingKey());S.lastSync=Date.now();S.syncError='';setBusy(false);modal.close();if(cmd.type==='sale'){S.cart=[];S.customer='';S.customerPhone='+62';S.note='';S.payment='Cash';}shell();toast(successText);return true;}
+    savePending(cmd);setBusy(true);
+    try{S.db=await S.store.mutate(cmd);clearPending();S.lastSync=Date.now();S.syncError='';setBusy(false);modal.close();if(cmd.type==='sale'){S.cart=[];S.customer='';S.customerPhone='+62';S.note='';S.payment='Cash';}shell();toast(successText);return true;}
     catch(e){
       // A successful read can resolve an uncertain PUT response without recording the operation twice.
-      try{const fresh=await S.store.read();S.db=fresh;if(fresh.operations?.[cmd.id]){sessionStorage.removeItem(pendingKey());setBusy(false);modal.close();if(cmd.type==='sale'){S.cart=[];S.customer='';S.customerPhone='+62';S.note='';}shell();toast('Save confirmed.');return true;}
-        if(!e.ambiguous)sessionStorage.removeItem(pendingKey());
+      try{const fresh=await S.store.read();S.db=fresh;if(fresh.operations?.[cmd.id]){clearPending();setBusy(false);modal.close();if(cmd.type==='sale'){S.cart=[];S.customer='';S.customerPhone='+62';S.note='';}shell();toast('Save confirmed.');return true;}
+        if(!e.ambiguous)clearPending();
       }catch{ /* Keep the stable operation ID for a safe retry after reconnecting. */ }
       setBusy(false);renderPending();headerStatus();toast(e.message,true);return false;
     }
@@ -125,7 +139,7 @@
       if(action==='add-cart'){if(pending()){toast('Resolve the pending save first.',true);return;}const p=S.db.products[pid],line=S.cart.find(i=>i.productId===pid);if(line){if(line.quantity>=p.stock)return;line.quantity++;}else S.cart.push({productId:pid,quantity:1,unitPrice:p.price});updateCart();return;}
       if(action==='remove-cart'){S.cart=S.cart.filter(i=>i.productId!==pid);updateCart();return;}
       if(action==='promo'){S.cart.find(i=>i.productId===pid).unitPrice=S.db.products[pid].promoPrice;updateCart();return;}
-      if(action==='checkout'){const invalid=[...document.querySelectorAll('#cart-lines input')].find(el=>!el.checkValidity()||el.value==='');if(invalid){invalid.reportValidity();toast('Check the quantities and prices before saving.',true);return;}const cmd={id:id(),at:Date.now(),type:'sale',items:structuredClone(S.cart),customer:S.customer,customerPhone:S.customerPhone,payment:S.payment,note:S.note};if(await commit(cmd,'Sale recorded and stock updated.'))receipt(cmd.id);return;}
+      if(action==='checkout'){const invalid=[...document.querySelectorAll('#cart-lines input')].find(el=>!el.checkValidity()||el.value==='');if(invalid){invalid.reportValidity();toast('Check the quantities and prices before saving.',true);return;}const cmd={id:id(),at:Date.now(),type:'sale',items:safeClone(S.cart),customer:S.customer,customerPhone:S.customerPhone,payment:S.payment,note:S.note};if(await commit(cmd,'Sale recorded and stock updated.'))receipt(cmd.id);return;}
       if(action==='receipt')return receipt(pid);
       if(action==='void-dialog')return openDialog(`<span class="eyebrow">CORRECT A SALE</span><h2>Void this sale?</h2><p>All items will be returned to stock and ${money(S.db.sales[pid].total)} (${myr(S.db.sales[pid].total)}) excluded from revenue. The original record stays in your history.</p><form id="void-form" data-id="${esc(pid)}"><label>Reason<input name="reason" required maxlength="200" placeholder="e.g. customer cancelled"></label><div class="dialog-actions"><button class="button secondary" type="button" data-action="close">Keep sale</button><button class="button danger-button" type="submit">Void and restore stock</button></div></form>`);
       if(action==='clear-history'){S.historySearch='';S.historyDate='';S.historyStatus='all';renderPage();return;}

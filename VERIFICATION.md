@@ -1,21 +1,29 @@
-# StockFlow v2.7 verification
+# StockFlow v2.8 verification
 
-Automated test result: **22/22 passed**.
+This build was checked in two ways.
 
-Verified in the local test suite:
+## Automated core/API tests
+- `npm test`
+- 22/22 tests passing.
 
-- SUCCESS26 catalogue = 20 products / 117 opening units.
-- Beaded Bracelet 5 canonical name is retained.
-- Sales deduct stock atomically and keep historical values.
-- Voids restore stock once and preserve the original sale record.
-- Restock originals returns catalogue products to the original quantities without deleting sales/history.
-- Restock matches legacy inventory when Firebase product IDs differ by using SKU and normalized product names.
-- Legacy “Imposter bracelet” is recognized as Beaded Bracelet 5, and the PDF typo “Pua Kumbu Scaft” is recognized as Pua Kumbu Scarf.
-- Genuinely missing catalogue items are recreated automatically at their original quantity while custom products are left unchanged.
-- Restock movements record the exact per-product delta.
-- Close shift stores completed/voided counts, revenue, payment totals, items sold, stock movements and inventory snapshot.
-- A new shift window begins after the previous close.
-- Firebase REST continues using `stockFlow/data` with ETag conditional writes.
-- Permission-denied errors direct the user to the included no-login StockFlow rules.
+## Real browser integration test
+The application was loaded in headless Chromium against a simulated Firebase RTDB endpoint using a legacy inventory whose product IDs/SKUs did not match the SUCCESS26 catalogue.
 
-Real Firebase permission changes cannot be published by this ZIP. The included rules must be reviewed and published in Firebase Console once because the previous authenticated rules are incompatible with a no-login client.
+The browser was intentionally run in a restricted context where:
+- `crypto.randomUUID()` was unavailable
+- `sessionStorage` was unavailable
+- `structuredClone()` was unavailable
+- `AbortSignal.timeout()` was unavailable
+
+Verified end-to-end:
+1. StockFlow loads and reads the shared RTDB workspace.
+2. Inventory page opens.
+3. Restock recognizes legacy products by name/alias.
+4. Missing SUCCESS26 items are recreated.
+5. Restock completes at exactly 20 catalogue products / 117 catalogue units.
+6. A new sale can be completed and saved.
+7. Stock is reduced by the sale.
+8. Close Shift saves a shift report.
+9. No browser page errors occur during the flow.
+
+The mobile compatibility fixes are in `app.js` and `stockflow-api.js`.

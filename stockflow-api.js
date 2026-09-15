@@ -9,13 +9,19 @@
   function actor(){return {...ACTOR};}
 
   async function request(url,options={}){
+    let controller=null,timer=null;
     try{
-      return await fetch(url,{...options,signal:AbortSignal.timeout(20000)});
+      let signal=options.signal;
+      if(!signal){
+        if(globalThis.AbortSignal&&typeof AbortSignal.timeout==='function')signal=AbortSignal.timeout(20000);
+        else if(globalThis.AbortController){controller=new AbortController();signal=controller.signal;timer=setTimeout(()=>controller.abort(),20000);}
+      }
+      return await fetch(url,{...options,...(signal?{signal}:{})});
     }catch(e){
       const err=new Error('Firebase connection interrupted. Check your internet connection, then retry. If a save was in progress, use Retry pending save to confirm it safely.');
       err.ambiguous=true;
       throw err;
-    }
+    }finally{if(timer)clearTimeout(timer);}
   }
 
   async function firebaseError(response){
