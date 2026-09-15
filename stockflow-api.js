@@ -39,7 +39,17 @@
     return base+'/stockFlow/data.json';
   }
 
+  function assertFirebaseSafeKeys(value,path='stockFlow/data'){
+    if(value===null||typeof value!=='object')return;
+    if(Array.isArray(value)){value.forEach((item,index)=>assertFirebaseSafeKeys(item,`${path}[${index}]`));return;}
+    for(const [key,item] of Object.entries(value)){
+      if(!key||/[.#$\[\]\/]/.test(key))throw new Error(`StockFlow generated an invalid Firebase field name at ${path}: "${key}". Please use the corrected build.`);
+      assertFirebaseSafeKeys(item,`${path}/${key}`);
+    }
+  }
+
   async function remote(method,body,etag){
+    if(body!==undefined)assertFirebaseSafeKeys(body);
     return request(databaseUrl(),{
       method,
       cache:'no-store',

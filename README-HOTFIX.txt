@@ -1,27 +1,16 @@
-STOCKFLOW v2.8 — MORNING HOTFIX
-===============================
+StockFlow v2.9 — Close Shift Firebase Key Fix
 
-This build fixes the silent mobile/browser failure where buttons could appear normal but do nothing.
+Fixed a Firebase Realtime Database error that appeared when closing a shift:
+"Invalid data; couldn't parse key ... Key value can't be empty or contain $ # [ ] / or ."
 
-Root causes fixed:
-- crypto.randomUUID() was used directly. It can be unavailable outside secure HTTPS contexts.
-- sessionStorage can be denied in sandboxed/privacy browser contexts and was able to stop saves.
-- structuredClone() was assumed to exist.
-- AbortSignal.timeout() was assumed to exist.
-- IntersectionObserver is now optional.
+Cause:
+The shift snapshot stored payment totals with the human-readable payment label
+"QR / bank transfer" as an object key. Firebase RTDB forbids '/' inside keys.
 
-Restock behavior:
-- Matches by exact ID, SKU, normalized product name, then legacy aliases.
-- "Imposter Bracelet" maps to "Beaded Bracelet 5".
-- "Pua Kumbu Scaft" maps to "Pua Kumbu Scarf".
-- Missing SUCCESS26 products are recreated automatically.
-- Restores the catalogue to exactly 117 opening units.
-- Sales history, shifts and stock history are not deleted.
+Fix:
+- Shift payment total fields now use Firebase-safe keys: cash, qrBankTransfer, card.
+- Human-readable sale payment values remain unchanged ("QR / bank transfer").
+- Added a recursive Firebase key guard before every write.
+- Added tests that close a QR shift and verify the full PUT payload contains no invalid keys.
 
-Firebase:
-- Same existing Firebase project.
-- Same RTDB path: stockFlow/data
-- No cashier login / no Firebase Authentication UI.
-
-IMPORTANT:
-If Firebase shows Permission denied, the deployed RTDB rules still need to allow unauthenticated read/write for stockFlow/data. That is separate from the browser compatibility bug fixed in this build.
+All 24 automated tests pass.

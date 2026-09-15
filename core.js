@@ -83,8 +83,13 @@
     const sales=Object.values(db.sales).filter(s=>Number.isFinite(s.at)&&s.at>fromAt&&s.at<=closedAt).sort((a,b)=>a.at-b.at).map(clone);
     const movements=Object.values(db.movements).filter(m=>Number.isFinite(m.at)&&m.at>fromAt&&m.at<=closedAt).sort((a,b)=>a.at-b.at).map(clone);
     const completed=sales.filter(s=>s.status==='completed'),voided=sales.filter(s=>s.status==='voided');
-    const paymentTotals={'Cash':0,'QR / bank transfer':0,'Card':0};
-    completed.forEach(s=>{paymentTotals[s.payment]=(paymentTotals[s.payment]||0)+s.total;});
+    // Firebase RTDB keys cannot contain '/', '.', '#', '$', '[' or ']'.
+    // Keep payment labels as sale values, but store shift totals under RTDB-safe field names.
+    const paymentTotals={cash:0,qrBankTransfer:0,card:0};
+    completed.forEach(s=>{
+      const key=s.payment==='Cash'?'cash':s.payment==='QR / bank transfer'?'qrBankTransfer':'card';
+      paymentTotals[key]=(paymentTotals[key]||0)+s.total;
+    });
     const inventory=Object.values(db.products).filter(p=>p.active).sort((a,b)=>String(a.sku).localeCompare(String(b.sku))).map(p=>({id:p.id,sku:p.sku,name:canonicalName(p.name),stock:p.stock,lowStock:p.lowStock,price:p.price,promoPrice:p.promoPrice??null,costRM:p.costRM??null}));
     const firstRecord=Math.min(...sales.map(s=>s.at),...movements.map(m=>m.at),closedAt);
     return {
